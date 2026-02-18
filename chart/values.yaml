@@ -1,0 +1,75 @@
+deployment:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    maxSurge: 1
+    maxUnavailable: 0
+  containers:
+    - name: seerr
+      image:
+        repository: ghcr.io/seerr-team/seerr
+        tag: latest
+      ports:
+        - name: http
+          containerPort: 80
+      env:
+        - name: PORT
+          value: "80"
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        - name: TZ
+          value: Europe/Bucharest
+        - name: LOG_LEVEL
+          value: debug
+      resources:
+        requests:
+          cpu: 0m
+          memory: 0Mi
+        limits:
+          cpu: 2000m
+          memory: 2000Mi
+      volumeMounts:
+        - name: storage
+          mountPath: /app/config
+          subPath: seerr/config
+  volumes:
+    - name: storage
+      type: pvc
+      typeName: storage-pvc
+
+ingresses:
+  - name: ingress
+    tls:
+      secretName: tls-secret
+    hosts:
+      - host: ovrs.@vault(secrets/data/domain main | DOMAIN_NAME)
+        paths:
+          - path: "/"
+            pathType: Prefix
+            serviceName: service
+            servicePort: http
+
+pvcs:
+  - name: storage-pvc
+    storageClassName: local-path-persistent
+    accessModes:
+      - ReadWriteOnce
+    size: 1Gi
+    volumeMode: Filesystem
+
+services:
+  - name: service
+    type: ClusterIP
+    ports:
+      - name: http
+        protocol: TCP
+        port: 80
+
+vaultSecrets:
+  - name: tls-secret
+    path: secrets/certificates
+    templates:
+      tls.crt: "{% .Secrets.tls_crt %}"
+      tls.key: "{% .Secrets.tls_key %}"
